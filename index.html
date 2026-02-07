@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enter — THE STORY</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#050208}
+canvas{display:block}
+#skip{position:fixed;bottom:28px;right:28px;color:rgba(255,255,255,0.3);
+font:13px Georgia,serif;letter-spacing:3px;cursor:pointer;z-index:10;
+user-select:none;text-transform:uppercase;padding:10px}
+#skip:hover{color:rgba(255,255,255,0.7)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="skip">SKIP &rsaquo;</div>
+<script>
+try {
+(function() {
+  var c = document.getElementById('c');
+  var ctx = c.getContext('2d');
+  var W, H, startTime, ended = false;
+
+  function resize() {
+    W = c.width = window.innerWidth;
+    H = c.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // === HELPERS ===
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function lerp(a, b, t) { return a + (b - a) * clamp(t, 0, 1); }
+  function easeOut(t) { t = clamp(t,0,1); return 1 - (1-t)*(1-t)*(1-t); }
+  function easeIn(t) { t = clamp(t,0,1); return t*t*t; }
+  function easeInOut(t) { t = clamp(t,0,1); return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+
+  // Draw an ellipse using scale transform (avoids ellipse() compatibility issues)
+  function ellipse(x, y, rx, ry) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, Math.PI * 2);
+    ctx.restore();
+  }
+
+  // === STARS ===
+  var stars = [];
+  for (var i = 0; i < 80; i++) {
+    stars.push({
+      px: Math.random(), py: Math.random(),
+      s: 0.3 + Math.random() * 1.2,
+      phase: Math.random() * 6.28,
+      speed: 0.4 + Math.random()
+    });
+  }
+
+  function drawStars(t) {
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i];
+      var a = 0.15 + Math.sin(t * s.speed + s.phase) * 0.12;
+      ctx.beginPath();
+      ctx.arc(s.px * W, s.py * H, s.s, 0, 6.283);
+      ctx.fillStyle = 'rgba(196,162,101,' + a.toFixed(3) + ')';
+      ctx.fill();
+    }
+  }
+
+  // === TRAIL PARTICLES ===
+  var trails = [];
+  function addTrail(x, y) {
+    if (trails.length > 100) return;
+    trails.push({
+      x: x, y: y,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2,
+      life: 1,
+      decay: 0.03 + Math.random() * 0.03,
+      size: 1 + Math.random()
+    });
+  }
+  function drawTrails() {
+    for (var i = trails.length - 1; i >= 0; i--) {
+      var p = trails[i];
+      p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+      if (p.life <= 0) { trails.splice(i, 1); continue; }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, 6.283);
+      ctx.fillStyle = 'rgba(196,162,101,' + (p.life * 0.4).toFixed(3) + ')';
+      ctx.fill();
+    }
+  }
+
+  // === PORTAL ===
+  function drawPortal(x, y, r, isWhite, intensity, time) {
+    if (intensity <= 0.01 || r <= 0) return;
+    var int = clamp(intensity, 0, 1.5);
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Outer glow
+    var g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.5);
+    if (isWhite) {
+      g.addColorStop(0, 'rgba(244,232,209,' + (int * 0.5) + ')');
+      g.addColorStop(0.3, 'rgba(196,162,101,' + (int * 0.2) + ')');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+    } else {
+      g.addColorStop(0, 'rgba(0,0,0,' + int + ')');
+      g.addColorStop(0.4, 'rgba(20,5,0,' + (int * 0.6) + ')');
+      g.addColorStop(0.7, 'rgba(139,37,0,' + (int * 0.1) + ')');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 2.5, 0, 6.283);
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    // Spinning particles
+    for (var i = 0; i < 10; i++) {
+      var angle = (i / 10) * 6.283 + time * (isWhite ? 2 : -2.5);
+      var dist = r * (0.6 + Math.sin(time * 3 + i) * 0.2);
+      var px = Math.cos(angle) * dist;
+      var py = Math.sin(angle) * dist;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.2, 0, 6.283);
+      ctx.fillStyle = isWhite
+        ? 'rgba(244,232,209,' + (int * 0.3) + ')'
+        : 'rgba(196,162,101,' + (int * 0.2) + ')';
+      ctx.fill();
+    }
+
+    // Ring
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.7, 0, 6.283);
+    ctx.strokeStyle = isWhite
+      ? 'rgba(196,162,101,' + (int * 0.25) + ')'
+      : 'rgba(139,37,0,' + (int * 0.2) + ')';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Core
+    var cg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.4);
+    if (isWhite) {
+      cg.addColorStop(0, 'rgba(255,250,240,' + int + ')');
+      cg.addColorStop(1, 'rgba(244,232,209,' + (int * 0.2) + ')');
+    } else {
+      cg.addColorStop(0, 'rgba(0,0,0,' + int + ')');
+      cg.addColorStop(1, 'rgba(10,3,0,' + (int * 0.4) + ')');
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.4, 0, 6.283);
+    ctx.fillStyle = cg;
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // === RABBIT (simple, using only arc and basic shapes) ===
+  function drawRabbit(x, y, scale, alpha, flipX, hopT) {
+    if (alpha <= 0.01 || scale <= 0.01) return;
+    ctx.save();
+    ctx.translate(x, y);
+    if (flipX) ctx.scale(-scale, scale);
+    else ctx.scale(scale, scale);
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+
+    // Hop bounce
+    var bounce = hopT ? Math.abs(Math.sin(hopT * 3.14)) * -14 : 0;
+    ctx.translate(0, bounce);
+
+    // Shadow
+    ctx.save();
+    ctx.translate(0, 28);
+    ctx.scale(1, 0.33);
+    ctx.beginPath(); ctx.arc(0, 0, 9, 0, 6.283);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fill();
+    ctx.restore();
+
+    // Body
+    ctx.save();
+    ctx.translate(0, 12);
+    ctx.scale(1, 1.33);
+    ctx.beginPath(); ctx.arc(0, 0, 12, 0, 6.283);
+    ctx.fillStyle = '#d4c8b8'; ctx.fill();
+    ctx.strokeStyle = 'rgba(196,162,101,0.2)'; ctx.lineWidth = 0.7; ctx.stroke();
+    ctx.restore();
+
+    // Tail
+    ctx.beginPath(); ctx.arc(-12, 18, 4, 0, 6.283);
+    ctx.fillStyle = '#ede5da'; ctx.fill();
+
+    // Head
+    ctx.save();
+    ctx.translate(2, -8);
+    ctx.scale(1, 1.1);
+    ctx.beginPath(); ctx.arc(0, 0, 9.5, 0, 6.283);
+    ctx.fillStyle = '#ede5da'; ctx.fill();
+    ctx.strokeStyle = 'rgba(196,162,101,0.2)'; ctx.lineWidth = 0.7; ctx.stroke();
+    ctx.restore();
+
+    // Left ear
+    ctx.save();
+    ctx.translate(-3, -27);
+    ctx.scale(0.3, 1);
+    ctx.beginPath(); ctx.arc(0, 0, 12, 0, 6.283);
+    ctx.fillStyle = '#d4c8b8'; ctx.fill();
+    ctx.restore();
+
+    // Right ear
+    ctx.save();
+    ctx.translate(6, -29);
+    ctx.scale(0.28, 1);
+    ctx.beginPath(); ctx.arc(0, 0, 13, 0, 6.283);
+    ctx.fillStyle = '#d4c8b8'; ctx.fill();
+    ctx.restore();
+
+    // Eye
+    ctx.beginPath(); ctx.arc(7, -10, 2, 0, 6.283);
+    ctx.fillStyle = '#2c1810'; ctx.fill();
+    // Eye shine
+    ctx.beginPath(); ctx.arc(7.7, -11, 0.6, 0, 6.283);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
+
+    // Nose
+    ctx.beginPath(); ctx.arc(10, -6, 1.2, 0, 6.283);
+    ctx.fillStyle = 'rgba(180,130,120,0.5)'; ctx.fill();
+
+    // Front leg
+    ctx.save();
+    ctx.translate(5, 25);
+    ctx.scale(0.55, 1);
+    ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, 6.283);
+    ctx.fillStyle = '#d4c8b8'; ctx.fill();
+    ctx.restore();
+
+    // Back leg
+    ctx.save();
+    ctx.translate(-7, 24);
+    ctx.scale(0.7, 1);
+    ctx.beginPath(); ctx.arc(0, 0, 6.5, 0, 6.283);
+    ctx.fillStyle = '#cfc2b0'; ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  // Rabbit looking around (head turns)
+  function drawRabbitLook(x, y, scale, alpha, lookDir) {
+    if (alpha <= 0.01 || scale <= 0.01) return;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+
+    // Shadow
+    ctx.save(); ctx.translate(0,28); ctx.scale(1,0.33);
+    ctx.beginPath(); ctx.arc(0,0,9,0,6.283); ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.fill();
+    ctx.restore();
+
+    // Body
+    ctx.save(); ctx.translate(0,12); ctx.scale(1,1.33);
+    ctx.beginPath(); ctx.arc(0,0,12,0,6.283); ctx.fillStyle='#d4c8b8'; ctx.fill();
+    ctx.restore();
+
+    // Head group (rotates with look)
+    ctx.save();
+    ctx.translate(2, -8);
+    ctx.rotate(lookDir * 0.12);
+
+    ctx.save(); ctx.scale(1,1.1);
+    ctx.beginPath(); ctx.arc(0,0,9.5,0,6.283); ctx.fillStyle='#ede5da'; ctx.fill();
+    ctx.restore();
+
+    // Ears
+    ctx.save(); ctx.translate(-4,-19); ctx.scale(0.3,1);
+    ctx.beginPath(); ctx.arc(0,0,12,0,6.283); ctx.fillStyle='#d4c8b8'; ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.translate(5,-21); ctx.scale(0.28,1);
+    ctx.beginPath(); ctx.arc(0,0,13,0,6.283); ctx.fillStyle='#d4c8b8'; ctx.fill();
+    ctx.restore();
+
+    // Eye (follows look)
+    var ex = lookDir * 1.5;
+    ctx.beginPath(); ctx.arc(5+ex,-2,2,0,6.283); ctx.fillStyle='#2c1810'; ctx.fill();
+    ctx.beginPath(); ctx.arc(5.7+ex,-3,0.6,0,6.283); ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.fill();
+
+    ctx.restore(); // end head group
+
+    // Legs
+    ctx.save(); ctx.translate(5,25); ctx.scale(0.55,1);
+    ctx.beginPath(); ctx.arc(0,0,5.5,0,6.283); ctx.fillStyle='#d4c8b8'; ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.translate(-7,24); ctx.scale(0.7,1);
+    ctx.beginPath(); ctx.arc(0,0,6.5,0,6.283); ctx.fillStyle='#cfc2b0'; ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  // === OUROBOROS INFINITY ===
+  function drawOuroboros(x, y, scale, alpha, eyeGlow) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+
+    var A = 48, B = 24;
+
+    // Lemniscate path
+    ctx.beginPath();
+    for (var i = 0; i <= 80; i++) {
+      var t = (i / 80) * 6.283;
+      var d = 1 + Math.sin(t) * Math.sin(t);
+      var px = A * Math.cos(t) / d;
+      var py = B * Math.sin(t) * Math.cos(t) / d;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    // Body layers
+    ctx.strokeStyle = 'rgba(196,162,101,' + (alpha*0.25) + ')'; ctx.lineWidth = 9; ctx.stroke();
+    ctx.strokeStyle = 'rgba(50,80,40,' + (alpha*0.85) + ')'; ctx.lineWidth = 6; ctx.stroke();
+    ctx.strokeStyle = 'rgba(30,50,25,' + (alpha*0.4) + ')'; ctx.lineWidth = 2; ctx.stroke();
+
+    // Right head
+    ctx.beginPath(); ctx.arc(A * 0.88, 2, 5, 0, 6.283);
+    ctx.fillStyle = 'rgba(55,85,45,' + alpha + ')'; ctx.fill();
+    // Right eye
+    ctx.beginPath(); ctx.arc(A * 0.88 + 3, 0, 1.8, 0, 6.283);
+    ctx.fillStyle = 'rgba(255,200,50,' + eyeGlow + ')'; ctx.fill();
+    if (eyeGlow > 0.2) {
+      var eg = ctx.createRadialGradient(A*0.88+3, 0, 0, A*0.88+3, 0, 8);
+      eg.addColorStop(0, 'rgba(255,200,50,' + (eyeGlow*0.4) + ')');
+      eg.addColorStop(1, 'rgba(255,200,50,0)');
+      ctx.beginPath(); ctx.arc(A*0.88+3, 0, 8, 0, 6.283);
+      ctx.fillStyle = eg; ctx.fill();
+    }
+
+    // Left head
+    ctx.beginPath(); ctx.arc(-A * 0.88, -2, 5, 0, 6.283);
+    ctx.fillStyle = 'rgba(55,85,45,' + alpha + ')'; ctx.fill();
+    // Left eye
+    ctx.beginPath(); ctx.arc(-A * 0.88 - 3, 0, 1.8, 0, 6.283);
+    ctx.fillStyle = 'rgba(255,200,50,' + eyeGlow + ')'; ctx.fill();
+    if (eyeGlow > 0.2) {
+      var eg2 = ctx.createRadialGradient(-A*0.88-3, 0, 0, -A*0.88-3, 0, 8);
+      eg2.addColorStop(0, 'rgba(255,200,50,' + (eyeGlow*0.4) + ')');
+      eg2.addColorStop(1, 'rgba(255,200,50,0)');
+      ctx.beginPath(); ctx.arc(-A*0.88-3, 0, 8, 0, 6.283);
+      ctx.fillStyle = eg2; ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // === BOOK / TOME ===
+  function drawBook(x, y, scale, alpha, eyeGlow) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(-105, -145, 220, 300);
+
+    // Cover
+    var lg = ctx.createLinearGradient(-110, -150, 110, 150);
+    lg.addColorStop(0, '#3a1f0e');
+    lg.addColorStop(0.5, '#4a2a14');
+    lg.addColorStop(1, '#2a1508');
+    ctx.fillStyle = lg;
+    ctx.fillRect(-110, -150, 220, 300);
+
+    // Border
+    ctx.strokeStyle = 'rgba(196,162,101,0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-100, -140, 200, 280);
+
+    // Inner border
+    ctx.strokeStyle = 'rgba(196,162,101,0.18)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-92, -132, 184, 264);
+
+    // Spine shadow
+    var sp = ctx.createLinearGradient(-110, 0, -92, 0);
+    sp.addColorStop(0, 'rgba(0,0,0,0.45)');
+    sp.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sp;
+    ctx.fillRect(-110, -150, 18, 300);
+
+    // Title
+    ctx.fillStyle = 'rgba(196,162,101,0.85)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 16px Georgia, serif';
+    ctx.fillText('THE', 0, -40);
+    ctx.font = 'bold 26px Georgia, serif';
+    ctx.fillText('STORY', 0, -10);
+
+    // Decorative line
+    ctx.beginPath();
+    ctx.moveTo(-28, 8);
+    ctx.lineTo(28, 8);
+    ctx.strokeStyle = 'rgba(196,162,101,0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Ouroboros on cover
+    drawOuroboros(0, 58, 0.5, alpha, eyeGlow);
+
+    // Author
+    ctx.fillStyle = 'rgba(196,162,101,0.4)';
+    ctx.font = 'italic 10px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Ronald Morris Sborz Jr.', 0, 115);
+
+    ctx.restore();
+  }
+
+  // === SPIRAL VORTEX ===
+  function drawVortex(x, y, radius, rotation, alpha) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+
+    for (var arm = 0; arm < 5; arm++) {
+      var armAngle = (arm / 5) * 6.283;
+      ctx.beginPath();
+      for (var i = 0; i < 50; i++) {
+        var t = i / 50;
+        var r = radius * t;
+        var angle = armAngle + t * 12.566;
+        var px = Math.cos(angle) * r;
+        var py = Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = 'rgba(196,162,101,' + (alpha * (0.25 - arm * 0.04)) + ')';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // === PORTAL POSITIONS ===
+  function getP() {
+    return {
+      bh1: { x: W * 0.50, y: H * 0.50 },
+      bh2: { x: W * 0.25, y: H * 0.72 },
+      bh3: { x: W * 0.75, y: H * 0.75 },
+      wh1: { x: W * 0.20, y: H * 0.25 },
+      wh2: { x: W * 0.80, y: H * 0.22 }
+    };
+  }
+
+  // ===========================================
+  // MAIN ANIMATION LOOP
+  // Total duration: ~15s
+  // ===========================================
+  // 0-1     Rabbit enters from left, center BH forms
+  // 1-2     Rabbit jumps into center BH
+  // 2-3     WH upper-left opens, rabbit pops out, looks around
+  // 3-4     Rabbit hops to BH bottom-left, jumps in
+  // 4-5     WH upper-right opens, rabbit exits, looks around
+  // 5-6     Rabbit hops to BH bottom-right, disappears
+  // 6-8     White dot glows and grows at center
+  // 8-10.5  Book/tome approaches, ouroboros eyes glow
+  // 10.5-12 Book opens, inscription text appears
+  // 12-13.5 Spiral vortex dissolves book
+  // 13.5-15 Fade to dark, redirect
+  // ===========================================
+
+  function animate(timestamp) {
+    if (ended) return;
+    if (!startTime) startTime = timestamp;
+    var t = (timestamp - startTime) / 1000;
+    var p = getP();
+
+    // Clear
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#050208';
+    ctx.fillRect(0, 0, W, H);
+
+    drawStars(t);
+    drawTrails();
+
+    // --- PHASE 1: Rabbit enters, BH forms (0-1s) ---
+    if (t < 1) {
+      var e = easeOut(t);
+      drawPortal(p.bh1.x, p.bh1.y, 22 + e * 12, false, e, t);
+      var rx = lerp(-40, W * 0.63, e);
+      drawRabbit(rx, p.bh1.y + 5, 0.75, e, false, e * 4);
+    }
+
+    // --- PHASE 2: Rabbit jumps into center BH (1-2s) ---
+    else if (t < 2) {
+      var e = t - 1;
+      drawPortal(p.bh1.x, p.bh1.y, 34, false, 1, t);
+      if (e < 0.7) {
+        var m = easeInOut(e / 0.7);
+        var rx = lerp(W * 0.63, p.bh1.x, m);
+        var arc = m > 0.3 ? Math.sin((m - 0.3) / 0.7 * 3.14) * -38 : 0;
+        drawRabbit(rx, p.bh1.y + 5 + arc, lerp(0.75, 0.1, m), 1 - m * 0.6, false, e * 6);
+        if (Math.random() < 0.4) addTrail(rx, p.bh1.y + 20 + arc);
+      }
+      if (e > 0.6) {
+        drawPortal(p.bh1.x, p.bh1.y, 34 + (e-0.6)/0.4 * 15, false, 1.2, t);
+      }
+    }
+
+    // --- PHASE 3: WH upper-left, rabbit pops out (2-3s) ---
+    else if (t < 3) {
+      var e = t - 2;
+      // Fade center BH
+      drawPortal(p.bh1.x, p.bh1.y, 34, false, clamp(1 - e * 4, 0, 1), t);
+      // White hole opens
+      var whSize = easeOut(clamp(e * 2, 0, 1));
+      drawPortal(p.wh1.x, p.wh1.y, 24 * whSize, true, clamp(e * 2.5, 0, 1), t);
+      // Rabbit pops out
+      if (e > 0.3) {
+        var rt = (e - 0.3) / 0.7;
+        var popScale = easeOut(clamp(rt * 2, 0, 1));
+        var look = Math.sin(rt * 10) * 1.5;
+        drawRabbitLook(p.wh1.x + 28, p.wh1.y + 10, 0.65 * popScale, clamp(rt * 2, 0, 1), look);
+      }
+      // Next BH fades in
+      if (e > 0.6) {
+        var bt = (e - 0.6) / 0.4;
+        drawPortal(p.bh2.x, p.bh2.y, 18 + bt * 12, false, bt * 0.8, t);
+      }
+    }
+
+    // --- PHASE 4: Rabbit hops to BH bottom-left (3-4s) ---
+    else if (t < 4) {
+      var e = t - 3;
+      drawPortal(p.wh1.x, p.wh1.y, 24, true, clamp(1 - e * 3, 0, 1), t);
+      drawPortal(p.bh2.x, p.bh2.y, 30, false, 1, t);
+      if (e < 0.55) {
+        var m = easeInOut(e / 0.55);
+        var rx = lerp(p.wh1.x + 28, p.bh2.x, m);
+        var ry = lerp(p.wh1.y + 10, p.bh2.y, m);
+        var arc = Math.sin(m * 3.14) * -32;
+        drawRabbit(rx, ry + arc, lerp(0.65, 0.45, m), 1, true, e * 6);
+        if (Math.random() < 0.3) addTrail(rx, ry + arc + 14);
+      } else {
+        var st = (e - 0.55) / 0.45;
+        var sc = lerp(0.45, 0, easeIn(st));
+        if (sc > 0.05) drawRabbit(p.bh2.x, p.bh2.y, sc, 1 - st, true, e * 6);
+        drawPortal(p.bh2.x, p.bh2.y, 30 + st * 10, false, 1 + st * 0.2, t);
+      }
+    }
+
+    // --- PHASE 5: WH upper-right, rabbit exits (4-5s) ---
+    else if (t < 5) {
+      var e = t - 4;
+      drawPortal(p.bh2.x, p.bh2.y, 30, false, clamp(1 - e * 4, 0, 1), t);
+      var whSize = easeOut(clamp(e * 2, 0, 1));
+      drawPortal(p.wh2.x, p.wh2.y, 24 * whSize, true, clamp(e * 2.5, 0, 1), t);
+      if (e > 0.25) {
+        var rt = (e - 0.25) / 0.75;
+        var popScale = easeOut(clamp(rt * 2, 0, 1));
+        var look = Math.sin(rt * 8) * 1.6;
+        drawRabbitLook(p.wh2.x - 24, p.wh2.y + 10, 0.65 * popScale, clamp(rt * 2, 0, 1), look);
+      }
+      if (e > 0.5) {
+        var bt = (e - 0.5) / 0.5;
+        drawPortal(p.bh3.x, p.bh3.y, 18 + bt * 12, false, bt * 0.8, t);
+      }
+    }
+
+    // --- PHASE 6: Rabbit to BH bottom-right, gone (5-6s) ---
+    else if (t < 6) {
+      var e = t - 5;
+      drawPortal(p.wh2.x, p.wh2.y, 24, true, clamp(1 - e * 3, 0, 1), t);
+      drawPortal(p.bh3.x, p.bh3.y, 30, false, 1, t);
+      if (e < 0.5) {
+        var m = easeInOut(e / 0.5);
+        var rx = lerp(p.wh2.x - 24, p.bh3.x, m);
+        var ry = lerp(p.wh2.y + 10, p.bh3.y, m);
+        var arc = Math.sin(m * 3.14) * -35;
+        drawRabbit(rx, ry + arc, lerp(0.65, 0.4, m), 1, true, e * 7);
+        if (Math.random() < 0.3) addTrail(rx, ry + arc + 14);
+      } else {
+        var st = (e - 0.5) / 0.5;
+        var sc = lerp(0.4, 0, easeIn(st));
+        if (sc > 0.05) drawRabbit(p.bh3.x, p.bh3.y, sc, 1 - st, true, e * 7);
+        drawPortal(p.bh3.x, p.bh3.y, 30 + st * 12, false, 1 + st * 0.2, t);
+      }
+    }
+
+    // --- PHASE 7: White dot grows at center (6-8s) ---
+    else if (t < 8) {
+      var e = (t - 6) / 2;
+      // Fade last BH
+      if (e < 0.2) drawPortal(p.bh3.x, p.bh3.y, 30, false, (1 - e / 0.2) * 0.4, t);
+
+      // White dot
+      var dotR = easeOut(e) * Math.min(W, H) * 0.22;
+      if (dotR > 1) {
+        var cg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, dotR);
+        cg.addColorStop(0, 'rgba(255,252,245,' + (0.3 + e * 0.7) + ')');
+        cg.addColorStop(0.35, 'rgba(244,232,209,' + (0.2 + e * 0.5) + ')');
+        cg.addColorStop(0.7, 'rgba(196,162,101,' + (e * 0.15) + ')');
+        cg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(W/2, H/2, dotR, 0, 6.283);
+        ctx.fillStyle = cg;
+        ctx.fill();
+      }
+
+      // Circle outline forming
+      if (e > 0.4 && dotR > 1) {
+        var ct = (e - 0.4) / 0.6;
+        ctx.beginPath();
+        ctx.arc(W/2, H/2, dotR * 0.55, -1.571, -1.571 + 6.283 * easeOut(ct));
+        ctx.strokeStyle = 'rgba(196,162,101,' + (ct * 0.5) + ')';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      }
+    }
+
+    // --- PHASE 8: Book approaches, eyes glow (8-10.5s) ---
+    else if (t < 10.5) {
+      var e = (t - 8) / 2.5;
+
+      // Background glow
+      var bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.min(W,H) * 0.35);
+      bg.addColorStop(0, 'rgba(244,232,209,0.06)');
+      bg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(W/2, H/2, Math.min(W,H) * 0.35, 0, 6.283);
+      ctx.fillStyle = bg;
+      ctx.fill();
+
+      var bookScale = easeOut(clamp(e * 1.15, 0, 1)) * 1.7 + 0.25;
+      var bookAlpha = easeOut(clamp(e * 2, 0, 1));
+      var eyeGlow = e > 0.35 ? easeInOut(clamp((e - 0.35) / 0.3, 0, 1)) : 0;
+
+      drawBook(W/2, H/2, bookScale, bookAlpha, eyeGlow);
+    }
+
+    // --- PHASE 9: Book opens, text appears (10.5-12s) ---
+    else if (t < 12) {
+      var e = (t - 10.5) / 1.5;
+
+      // Book fading back
+      drawBook(W/2, H/2, 1.95, 1 - e * 0.4, 1);
+
+      // Parchment glow spreading
+      var ow = easeOut(e) * W * 0.65;
+      var oh = easeOut(e) * H * 0.55;
+      var maxR = Math.max(ow, oh);
+      if (maxR > 1) {
+        var og = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, maxR);
+        og.addColorStop(0, 'rgba(244,232,209,' + (e * 0.8) + ')');
+        og.addColorStop(0.7, 'rgba(232,213,180,' + (e * 0.5) + ')');
+        og.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = og;
+        ctx.fillRect(W/2 - ow/2, H/2 - oh/2, ow, oh);
+      }
+
+      // Inscription text
+      if (e > 0.2) {
+        var ta = easeOut(clamp((e - 0.2) / 0.35, 0, 1));
+        ctx.save();
+        ctx.globalAlpha = ta;
+        ctx.fillStyle = '#2c1810';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'italic 15px Georgia, serif';
+        ctx.fillText('You are a thing that tells itself', W/2, H/2 - 28);
+        ctx.fillText('stories about what it is.', W/2, H/2 - 6);
+        ctx.font = 'italic 12px Georgia, serif';
+        ctx.fillStyle = 'rgba(44,24,16,0.55)';
+        ctx.fillText('Those stories construct the reality you inhabit.', W/2, H/2 + 24);
+        ctx.restore();
+      }
+
+      // Page turn effect
+      if (e > 0.8) {
+        var tt = (e - 0.8) / 0.2;
+        ctx.fillStyle = 'rgba(244,232,209,' + (tt * 0.35) + ')';
+        ctx.fillRect(W/2, 0, W/2 * tt, H);
+      }
+    }
+
+    // --- PHASE 10: Spiral vortex dissolves (12-13.5s) ---
+    else if (t < 13.5) {
+      var e = (t - 12) / 1.5;
+
+      // Residual parchment
+      var pa = 1 - easeIn(e);
+      if (pa > 0.01) {
+        var pg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.min(W,H) * 0.35);
+        pg.addColorStop(0, 'rgba(244,232,209,' + (pa * 0.6) + ')');
+        pg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = pg;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      drawVortex(W/2, H/2, lerp(40, Math.min(W,H) * 0.45, easeOut(e)), e * 18.84, 1 - e * 0.55);
+
+      // Fading text
+      if (e < 0.4) {
+        ctx.save();
+        ctx.globalAlpha = (0.4 - e) / 0.4 * 0.5;
+        ctx.fillStyle = '#2c1810';
+        ctx.textAlign = 'center';
+        ctx.font = 'italic 15px Georgia, serif';
+        ctx.fillText('You are a thing that tells itself', W/2, H/2 - 28);
+        ctx.fillText('stories about what it is.', W/2, H/2 - 6);
+        ctx.restore();
+      }
+    }
+
+    // --- PHASE 11: Fade out (13.5-15s) ---
+    else if (t < 15) {
+      var e = (t - 13.5) / 1.5;
+      // Fading glow
+      if (e < 0.4) {
+        var ga = (0.4 - e) * 0.25;
+        var gg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, 80);
+        gg.addColorStop(0, 'rgba(196,162,101,' + ga + ')');
+        gg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(W/2, H/2, 80, 0, 6.283);
+        ctx.fillStyle = gg;
+        ctx.fill();
+      }
+      // Fade to leather brown
+      ctx.fillStyle = 'rgba(26,14,5,' + easeIn(e) + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // --- DONE ---
+    else {
+      finish();
+      return;
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  function finish() {
+    if (ended) return;
+    ended = true;
+    window.location.href = 'book.html';
+  }
+
+  // Skip controls
+  document.getElementById('skip').addEventListener('click', finish);
+  document.addEventListener('keydown', finish);
+  c.addEventListener('touchstart', finish);
+
+  // Start animation
+  console.log('Intro animation starting...');
+  requestAnimationFrame(animate);
+
+})();
+} catch(err) {
+  console.error('Intro animation error:', err);
+  // If anything crashes, go straight to the book
+  window.location.href = 'book.html';
+}
+</script>
+</body>
+</html>

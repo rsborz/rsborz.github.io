@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enter — THE STORY</title>
+<meta name="description" content="You are a thing that tells itself stories about what it is. Those stories construct the reality you inhabit.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #050208; }
+  #intro-overlay { position: fixed; inset: 0; z-index: 1000; background: #050208; }
+  #intro-canvas { width: 100%; height: 100%; display: block; }
+  #skip-intro {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    color: rgba(255,255,255,0.25);
+    font-family: 'Cinzel', serif;
+    font-size: 0.72rem;
+    letter-spacing: 3px;
+    cursor: pointer;
+    z-index: 1001;
+    transition: color 0.3s;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  #skip-intro:hover { color: rgba(255,255,255,0.65); }
+</style>
+</head>
+<body>
+<div id="intro-overlay">
+  <canvas id="intro-canvas"></canvas>
+  <div id="skip-intro">SKIP ›</div>
+</div>
+<script src="js/intro-animation.js"></script>
+</body>
+</html>
